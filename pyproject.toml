@@ -1,0 +1,23 @@
+[project]
+name = "Call_me_maybe"
+version = "0.1.0"
+description = "Call me maybe - Introduction to function calling in LLMs"
+requires-python = ">=3.10"
+authors = [{ name="Alexander Bachurin", email="bachurin_s@yahoo.de" }]
+dependencies = [
+    "torch>=2.0.0",
+    "transformers>=4.40.0",
+    "huggingface-hub>=0.20.0",
+    "pydantic",
+    "numpy",
+    "json"
+]
+readme = "README.md"
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["llm_sdk"]
