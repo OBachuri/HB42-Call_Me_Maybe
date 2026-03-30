@@ -4,14 +4,26 @@ SHELL := /bin/bash
 
 RM = rm -fr
 
-VENV_DIR := .mz-venv
+VENV_DIR := .cmm-venv
 PYTHON := python3
 PIP := pip
 C_DIR := pwd
 
 
 UV := $(shell command -v uv 2>/dev/null)
-ARGS := $(wordlist 2, 999, $(MAKECMDGOALS))
+# ARGS := $(wordlist 2, 999, $(MAKECMDGOALS))
+
+
+install:
+#	mkdir -p .cache/uv_cache .cache/hf_cache
+#	UV_CACHE_DIR=.cache/uv_cache \ 
+#	HF_HOME=.cache/hf_cache \ 
+
+	uv sync --python 3
+
+run:
+	uv run python -m src $(ARGS)
+
 
 
 clean:
@@ -40,3 +52,5 @@ lint-strict:
 
 
 .PHONY: install, run, debug, clean, lint, lint-strict
+
+#  ln -s /home/obachuri/goinfre/uv uv
