@@ -2,8 +2,10 @@ import argparse
 import os
 import sys
 import json
-import torch
+from pathlib import Path
 import time
+
+import torch
 
 import llm_sdk
 from llm_sdk import Small_LLM_Model
@@ -52,6 +54,7 @@ def main() -> None:
 
     funcs_def_json = ""
     input_json = ""
+    output_json = []
 
     try:
         with open(param.functions_definition, "r") as defs:
@@ -95,7 +98,7 @@ def main() -> None:
     fun = ""
     f_list = ""
     max_function_name = 6
-    start_for_all = "fn"
+    # start_for_all = "fn"
     for f_ in fn.fn.values():
         fun = fun + f'- {f_.name}: {f_.description} \n'
         f_list = f_list + f'{f_.name}\n'
@@ -121,12 +124,13 @@ def main() -> None:
     # llm.verbose=False
 
     # 1. Record start time
-    start_time = time.perf_counter()    
+    start_time = time.perf_counter()
 
+    prompt_number = 0
     for promt in promts:
         str_promt = promt.prompt
         print("="*30)
-        print("promt:", str_promt)
+        print("prompt:", str_promt)
 #         str_ = f"""<|im_start|>system
 # You are a direct assistant.  Non-thinking mode.
 # You are a function selector.
@@ -197,6 +201,10 @@ Rules:
         # aa = llm.encode(start_for_all)
         # aa_1.extend(aa.flatten().tolist())
 
+        # str_ = llm.decode([2236])
+        # print(str_, "------")
+
+
         mylist = []
         aa = llm.encode('</think>')
         aa_1.extend(aa.flatten().tolist())
@@ -235,19 +243,25 @@ Rules:
         if (fn_c is None):
             continue
 
-        s_ = ','.join(f"'{p}':'{fn_c.parameters[p].type}'" for p in fn_c.parameters.keys())
-
+        s_ = ', '.join(f"'{p}': '{fn_c.parameters[p].type}'" for p in fn_c.parameters.keys())
+        fn_param_list = [[str(p), fn_c.parameters[p].type] for p in fn_c.parameters.keys()]
+        if (len(fn_param_list) < 1):
+            continue
+        print("Parameters list:", fn_param_list)
+        prompt_number += 1
         fn_c.parameters.keys()
         str_ = f"""<|im_start|>system
-You are a direct assistant.
+You are a direct assistant. You are a strict parameter extractor.
 Write JSON with function parameters.
 
 Function: {fn_name}
-Description: {fn_c.description} 
-Parameters (name:type):{{{s_}}}
+Description: {fn_c.description}
+Parameters {{name: type}}: {{{s_}}}
 
 Rules:
-- Return ONLY JSON with parameters
+- Return ONLY JSON with parameters for the function
+- Do NOT return result
+- You are NOT executing the function. You are ONLY preparing the input parameters.
 <|im_end|>
 
 <|im_start|>user
@@ -261,31 +275,52 @@ Rules:
         # print("*"*10)
         # print(mylist)
 
+
         aa = llm.encode(str_)
         aa_1 = aa.flatten().tolist()
         mylist = []
         aa = llm.encode('</think>')
         aa_1.extend(aa.flatten().tolist())
 
+#        cc = llm.get_logits_from_input_ids(aa_1)
+        aa = llm.encode('```json')
+#        print(aa)
+        aa_1.extend(aa.flatten().tolist())
         cc = llm.get_logits_from_input_ids(aa_1)
-        cc_t = torch.tensor(cc)
-        next_token = torch.argmax(cc_t).item()
+        aa = llm.encode(f'{{"{fn_param_list[0][0]}": ')
+        aa_1.extend(aa.flatten().tolist())
+        mylist.extend(aa.flatten().tolist())
 
-        aa_1.append(next_token)
+        # cc_t = torch.tensor(cc)
+        # next_token = torch.argmax(cc_t).item()
+
+        # aa_1.append(next_token)
 
         for i_ in range(1, 50):
             cc = llm.get_logits_from_input_ids(aa_1)
             cc_t = torch.tensor(cc)
             next_token = torch.argmax(cc_t).item()
-            if (next_token == 151645):
+            if ((next_token == 151645) or (next_token == 73594)):
+                # print("t:", next_token, ", str:", llm.decode([next_token]))
                 break
             # print("t:", next_token, ", str:", llm.decode([next_token]))
             aa_1.append(next_token)
             mylist.append(next_token)
 
+        # print(next_token, ", l:", aa_1[-3:])
         str_ = llm.decode(mylist)
-        print("param:", str_)
-
+        idx = str_.rfind("}")
+        if idx != -1:
+            str_ = str_[:idx + 1]
+        print("Parameters values:", str_)
+        try:
+            fn_param_json = json.loads(str_)
+            output_json.append({
+                "prompt": str_promt,
+                "name": fn_name,
+                "parameters": fn_param_json})
+        except Exception as e:
+            print("Error converting parameters to json:", e)
 
     # Record end time
     end_time = time.perf_counter()
@@ -293,6 +328,18 @@ Rules:
     # Calculate duration
     duration = int(end_time - start_time)
     print(f"Execution time: {duration // 60}:{duration % 60} seconds")
+
+    # print(output_json)
+
+    out_path = Path(param.output)
+
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w") as out_file:
+            json.dump(output_json, out_file, indent=2)
+    except Exception as e:
+        print(f"Error by writting json in file {param.output}:", e)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
