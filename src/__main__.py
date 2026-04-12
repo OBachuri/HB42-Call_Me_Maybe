@@ -9,10 +9,188 @@ import torch
 
 import llm_sdk
 from llm_sdk import Small_LLM_Model
+
 from src.pd_valid import CFunctions, CFunction, CPrompt
+from src.fn_llm_utils import  LLMVocabulary
+from typing import Any
+import torch.nn.functional as F
 
 
 # from pydantic import BaseModel, Field, model_validator, field_validator
+
+
+def get_variable(llm: Small_LLM_Model,
+                 v_type: str,
+                 reqest_tokens_list: list, llm_vocab: LLMVocabulary) -> Any:
+
+    str_ = ''
+    value_str = ''
+    next_token = 0
+    value_tokens = []
+    min_probability = 0.95
+
+    # skip white spaces
+    # print("skip white spaces")
+    while (len(str_) == 0):
+        cc = llm.get_logits_from_input_ids(reqest_tokens_list)
+        # print(cc)
+        cc_t = torch.tensor(cc)
+        next_token = torch.argmax(cc_t).item()
+        if ((next_token == 151645) or (next_token == 73594)):
+            # print("t:", next_token, ", str:", llm.decode([next_token]))
+            return None
+        str_ = llm.decode([next_token]).strip()
+        if (len(str_) < 1):
+            reqest_tokens_list.append(next_token)
+    # print("start variable")
+
+    """ steps_ = list[]
+        1 - allowed values or characters,
+        2 - max length,
+        3 - mandatory group,
+        4 - 0 = skip, 1 = include in value, 2 = the end
+        5 - all charsters allowed on this and next step
+    """
+
+    if (v_type == 'number') or (v_type == 'float'):
+        steps_ = [["-+", 1, 0, 1],
+                  ["0123456789", 20, 1, 1],
+                  [".", 1, 0],
+                  ["0123456789", 20, 1, 1],
+                  ["eE", 1, 0],
+                  ["0123456789", 15, 0, 1]]
+    elif (v_type == 'integer'):
+        print("integer:", str_)
+        probs = F.softmax(cc_t, dim=-1)
+        # print(probs)
+        # print("Форма:", probs.shape)        # torch.Size([3, 4, 5])
+        # print("Ранг:", probs.ndim)        # 3
+        # print("Размер:", probs.numel())     # 60 (3×4×5)
+        # print("Тип данных:", probs.dtype)    # torch.float32
+        # print("На устройстве:", probs.device) # cpu или cuda:0
+        # print("Градиент:", probs.requires_grad)  # False по умолчанию
+
+        indices = list(llm_vocab.int_first)
+        values = probs[indices]
+        # print(values)
+        next_ = torch.argmax(values).item()
+        next_token = indices[next_]
+        cur_probability = values[next_].item()
+        print(f"  1:{next_token:6}:'{llm_vocab.get_str_by_token(next_token)}', {cur_probability}")
+        if (cur_probability > min_probability):
+            value_str = llm.decode([next_token])
+            reqest_tokens_list.append(next_token)
+            cc = llm.get_logits_from_input_ids(reqest_tokens_list)
+            cc_t = torch.tensor(cc)
+        else:
+            return None
+
+        indices = list(llm_vocab.int_next)
+        x = 2
+        while (x < 30):
+            probs = F.softmax(cc_t, dim=-1)
+            values = probs[indices]
+            next_ = torch.argmax(values).item()
+            next_token = indices[next_]
+            cur_probability = values[next_].item()
+            print(f"{x:3}:{next_token:6}:'{llm_vocab.get_str_by_token(next_token)}', {cur_probability}")
+            if (cur_probability < min_probability):
+                break
+            value_str += llm_vocab.get_str_by_token(next_token)
+            reqest_tokens_list.append(next_token)
+            cc = llm.get_logits_from_input_ids(reqest_tokens_list)
+            cc_t = torch.tensor(cc)
+            x += 1
+
+        # probs
+
+        # if (str_[0] in '-+0123456789'):
+        #     value_str = str_[0]
+        # else:
+        #     probs = F.softmax(cc_t, dim=-1)
+        #     value_str = str_
+        # steps_ = [["-+", 1, 0, '-+0123456789'],
+        #           ["0123456789", 20, 1]]
+        # while (1):
+        #     str_[cur_char] in steps_[cur_step][3]
+        #     probs = F.softmax(cc_t, dim=-1)
+        v = None
+        try:
+            if (len(value_str) > 0):
+                v = int(value_str)
+        except Exception:
+            pass
+        return (v)
+
+    elif (v_type == 'string'):
+        # print("read string...")
+        # print("str:", str_)
+        # seek to "
+        i = str_.find('"')
+        if (i < 0):
+            aa = llm.encode('"')
+            reqest_tokens_list.extend(aa.flatten().tolist())
+            value_tokens.extend(aa.flatten().tolist())
+        else:
+            reqest_tokens_list.append(next_token)
+            value_tokens.append(next_token)
+            value_str = str_[(i + 1):]
+        cc = llm.get_logits_from_input_ids(reqest_tokens_list)
+        cc_t = torch.tensor(cc)
+        next_token = torch.argmax(cc_t).item()
+        str_ = llm.decode([next_token]).strip()
+        x = 1
+        while (x < 300):
+            str_1 = llm_vocab.get_str_by_token(next_token)
+            print(f"{x:3}:{next_token:6}:'{str_1}'")
+            x += 1
+            i = str_.find('"')
+            j = 0
+            if (i >= 0):
+                while  (i - j - 1 >= 0) and (str_[i - j - 1] == '\\'):
+                    j += 1
+                if (i == j):
+                    for i_s in range(0, len(value_str)):
+                        if (value_str[-i_s-1] == '\\'):
+                            j += 1
+                        else:
+                            break
+                if ((j % 2) == 0):
+                    reqest_tokens_list.append(next_token)
+                    value_tokens.append(next_token)
+                    str_ = llm.decode(value_tokens)
+                    i = str_.find('"')
+                    j = str_.rfind('"')
+                    # print("---end of variable---")
+                    str_ = str_[i+1:j]
+                    try:
+                        str_ = str_.encode('utf-8').decode('unicode_escape')
+                    except Exception:
+                        pass
+                    return (str_)
+            value_str += str_
+            reqest_tokens_list.append(next_token)
+            value_tokens.append(next_token)
+            cc = llm.get_logits_from_input_ids(reqest_tokens_list)
+            cc_t = torch.tensor(cc)
+            next_token = torch.argmax(cc_t).item()
+            if ((next_token == 151645) or (next_token == 73594)):
+                print("t:", next_token, ", str:", llm.decode([next_token]))
+                str_ = llm.decode(value_tokens)
+                i = str_.find('"')
+                str_ = str_[i+1:].encode('utf-8').decode('unicode_escape')
+                return (str_)
+            str_ = llm.decode([next_token]).strip()
+        str_ = llm.decode(value_tokens)
+        i = str_.find('"')
+        str_ = str_[i+1:].encode('utf-8').decode('unicode_escape')
+        return (str_)
+    elif (v_type == 'boolean'):
+        steps_ = [
+                  [['true', 'false'], 0, 0, 1],
+                  ]
+
+    return None
 
 
 def main() -> None:
@@ -116,6 +294,13 @@ def main() -> None:
     print("merges_path:", merges_path)
     print("tokenizer_path:", tokenizer_path)
 
+    try:
+        llm_vocab = LLMVocabulary(vocab_path)
+    except Exception as e :
+        print("Error reading model Vocabulary file:", e)
+        sys.exit(1)
+
+
     # print(dir(llm))
     print("="*10)
 
@@ -129,8 +314,9 @@ def main() -> None:
     prompt_number = 0
     for promt in promts:
         str_promt = promt.prompt
-        print("="*30)
-        print("prompt:", str_promt)
+        prompt_number += 1
+        print("="*30, f"[{prompt_number}/{len(promts)}]")
+        print("Prompt:", str_promt)
 #         str_ = f"""<|im_start|>system
 # You are a direct assistant.  Non-thinking mode.
 # You are a function selector.
@@ -173,7 +359,6 @@ Rules:
 <|im_start|>assistant
 """
 
-
         # str_ = (
         #     "<|im_start|>system\nYou are a reliable function-calling "
         #     "assistant. "
@@ -203,7 +388,6 @@ Rules:
 
         # str_ = llm.decode([2236])
         # print(str_, "------")
-
 
         mylist = []
         aa = llm.encode('</think>')
@@ -238,17 +422,16 @@ Rules:
 
         str_ = llm.decode(mylist)
         fn_name = str_.strip()
-        print("function:", fn_name)
+        print("Function:", fn_name)
         fn_c = fn.fn.get(fn_name, None)
         if (fn_c is None):
             continue
-
         s_ = ', '.join(f"'{p}': '{fn_c.parameters[p].type}'" for p in fn_c.parameters.keys())
         fn_param_list = [[str(p), fn_c.parameters[p].type] for p in fn_c.parameters.keys()]
         if (len(fn_param_list) < 1):
             continue
         print("Parameters list:", fn_param_list)
-        prompt_number += 1
+        # prompt_number += 1
         fn_c.parameters.keys()
         str_ = f"""<|im_start|>system
 You are a direct assistant. You are a strict parameter extractor.
@@ -275,10 +458,10 @@ Rules:
         # print("*"*10)
         # print(mylist)
 
-
         aa = llm.encode(str_)
         aa_1 = aa.flatten().tolist()
         mylist = []
+        f_param: dict[str, Any] = {}
         aa = llm.encode('</think>')
         aa_1.extend(aa.flatten().tolist())
 
@@ -286,41 +469,66 @@ Rules:
         aa = llm.encode('```json')
 #        print(aa)
         aa_1.extend(aa.flatten().tolist())
-        cc = llm.get_logits_from_input_ids(aa_1)
-        aa = llm.encode(f'{{"{fn_param_list[0][0]}": ')
-        aa_1.extend(aa.flatten().tolist())
-        mylist.extend(aa.flatten().tolist())
+        for i_param in range(0, len(fn_param_list)):
+            if (i_param == 0):
+                str_param = "{"
+            else:
+                str_param = ", "
+            str_param += f'"{fn_param_list[i_param][0]}":'
+            if (fn_name.find("regex") < 0):
+                str_param += " "
+            # cc = llm.get_logits_from_input_ids(aa_1)
+            # aa = llm.encode(f'{{"{fn_param_list[0][0]}": ')
+            # print(aa.flatten().tolist())
+            aa = llm.encode(str_param)
+            aa_1.extend(aa.flatten().tolist())
+            mylist.extend(aa.flatten().tolist())
 
-        # cc_t = torch.tensor(cc)
-        # next_token = torch.argmax(cc_t).item()
+            # print("*"*10)
+            # str_ = llm.decode(aa_1)
+            # print(str_)
+            # print("*"*10)
+            print(f"get_variable (name={fn_param_list[i_param][0]}, type={fn_param_list[i_param][1]})")
+            v = get_variable(llm, fn_param_list[i_param][1], aa_1, llm_vocab)
+            f_param[fn_param_list[i_param][0]] = v
+            print(f'-var--:"{v}":--:', type(v))
 
-        # aa_1.append(next_token)
+            # str_ = llm.decode(aa_1)
+            # print(str_)
+            # print("*"*10)
 
-        for i_ in range(1, 50):
-            cc = llm.get_logits_from_input_ids(aa_1)
-            cc_t = torch.tensor(cc)
-            next_token = torch.argmax(cc_t).item()
-            if ((next_token == 151645) or (next_token == 73594)):
-                # print("t:", next_token, ", str:", llm.decode([next_token]))
-                break
-            # print("t:", next_token, ", str:", llm.decode([next_token]))
-            aa_1.append(next_token)
-            mylist.append(next_token)
+
+            # cc_t = torch.tensor(cc)
+            # next_token = torch.argmax(cc_t).item()
+
+            # aa_1.append(next_token)
+
+            # for i_ in range(1, 50):
+            #     cc = llm.get_logits_from_input_ids(aa_1)
+            #     cc_t = torch.tensor(cc)
+            #     next_token = torch.argmax(cc_t).item()
+            #     if ((next_token == 151645) or (next_token == 73594)):
+            #         # print("t:", next_token, ", str:", llm.decode([next_token]))
+            #         break
+            #     # print("t:", next_token, ", str:", llm.decode([next_token]))
+            #     aa_1.append(next_token)
+            #     mylist.append(next_token)
 
         # print(next_token, ", l:", aa_1[-3:])
-        str_ = llm.decode(mylist)
-        idx = str_.rfind("}")
-        if idx != -1:
-            str_ = str_[:idx + 1]
-        print("Parameters values:", str_)
+        # str_ = llm.decode(mylist)
+        # idx = str_.rfind("}")
+        # if idx != -1:
+        #     str_ = str_[:idx + 1]
+        # print("Parameters values:", str_)
         try:
-            fn_param_json = json.loads(str_)
+            # fn_param_json = json.loads(str_)
             output_json.append({
                 "prompt": str_promt,
                 "name": fn_name,
-                "parameters": fn_param_json})
+                "parameters": f_param})
         except Exception as e:
             print("Error converting parameters to json:", e)
+        print(output_json[-1])
 
     # Record end time
     end_time = time.perf_counter()
