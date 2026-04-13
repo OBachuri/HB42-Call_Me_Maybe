@@ -7,7 +7,11 @@
 
 This project is part of the 42.fr curriculum.
 
-<font color="red"> *This is just the beginning of the project. Nothing works right now.* </font>
+> [!CAUTION] 
+>
+> *This is just the beginning of the project. Not all works as expected right now!*
+> Constrained Decoding work only for integer and string now.
+> Project under construction ...
 ---
 
 ## Description

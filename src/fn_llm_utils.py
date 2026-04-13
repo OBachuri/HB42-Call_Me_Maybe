@@ -53,3 +53,7 @@ class LLMVocabulary:
     def get_str_by_token(self, token_id: int) -> str | None:
         """ Return string representation of token """
         return self.id_to_txt.get(token_id, None)
+
+    def get_token_by_str(self, str_: str) -> int | None:
+        """ Return token id if find """
+        return self.txt_to_id.get(str_, None)

@@ -36,7 +36,9 @@ def get_variable(llm: Small_LLM_Model,
         # print(cc)
         cc_t = torch.tensor(cc)
         next_token = torch.argmax(cc_t).item()
-        if ((next_token == 151645) or (next_token == 73594)):
+        next_token_str = llm_vocab.get_str_by_token(next_token)
+        # if ((next_token == 151645) or (next_token == 73594)):
+        if (next_token_str is None) or (next_token_str == "```"):
             # print("t:", next_token, ", str:", llm.decode([next_token]))
             return None
         str_ = llm.decode([next_token]).strip()
@@ -174,8 +176,10 @@ def get_variable(llm: Small_LLM_Model,
             cc = llm.get_logits_from_input_ids(reqest_tokens_list)
             cc_t = torch.tensor(cc)
             next_token = torch.argmax(cc_t).item()
-            if ((next_token == 151645) or (next_token == 73594)):
-                print("t:", next_token, ", str:", llm.decode([next_token]))
+            next_token_str = llm_vocab.get_str_by_token(next_token)
+            # if ((next_token == 151645) or (next_token == 73594)):
+            if (next_token_str is None) or (next_token_str == "```"):
+                print("t:", next_token, ", str:", next_token_str)
                 str_ = llm.decode(value_tokens)
                 i = str_.find('"')
                 str_ = str_[i+1:].encode('utf-8').decode('unicode_escape')
@@ -296,10 +300,14 @@ def main() -> None:
 
     try:
         llm_vocab = LLMVocabulary(vocab_path)
-    except Exception as e :
+    except Exception as e:
         print("Error reading model Vocabulary file:", e)
         sys.exit(1)
 
+    # str_1 = llm_vocab.get_str_by_token(151645)
+    # print("stop:", str_1, type(str_1))
+    # str_1 = llm_vocab.get_str_by_token(73594)
+    # print(f'str_end_of_json:"{str_1}"', type(str_1))
 
     # print(dir(llm))
     print("="*10)
@@ -405,20 +413,23 @@ Rules:
 
         cc_t = torch.tensor(cc)
         next_token = torch.argmax(cc_t).item()
-
         aa_1.append(next_token)
 
-        for i_ in range(1, 20):
+        for i_ in range(1, max_function_name + 1):
             # print("---ccccc:")
             # print(aa_1)
             cc = llm.get_logits_from_input_ids(aa_1)
             cc_t = torch.tensor(cc)
             next_token = torch.argmax(cc_t).item()
-            if (next_token == 151645):
+            next_token_str = llm_vocab.get_str_by_token(next_token)
+            if next_token_str is None:
                 break
-            # print("t:", next_token, ", str:", llm.decode([next_token]))
+            # if (next_token == 151645):
+            #     break
+            # print("t:", next_token, ", str:", llm.decode([next_token]),"s:",next_token_str,type(next_token_str))
             aa_1.append(next_token)
             mylist.append(next_token)
+            i_ += 1
 
         str_ = llm.decode(mylist)
         fn_name = str_.strip()
@@ -491,12 +502,11 @@ Rules:
             print(f"get_variable (name={fn_param_list[i_param][0]}, type={fn_param_list[i_param][1]})")
             v = get_variable(llm, fn_param_list[i_param][1], aa_1, llm_vocab)
             f_param[fn_param_list[i_param][0]] = v
-            print(f'-var--:"{v}":--:', type(v))
+            print(f'-- variable value: "{v}", type:', type(v))
 
             # str_ = llm.decode(aa_1)
             # print(str_)
             # print("*"*10)
-
 
             # cc_t = torch.tensor(cc)
             # next_token = torch.argmax(cc_t).item()
