@@ -27,7 +27,7 @@ class CFunction(BaseModel):
     returns: CParameterType
 
     @field_validator("name")
-    def name_check(cls, v):
+    def name_check(cls, v: str) -> str:
         v = v.strip()
         if len(v) < 1:
             raise ValueError("Name of the function must not be empty!")
@@ -38,7 +38,7 @@ class CFunction(BaseModel):
         return v
 
     @field_validator("description")
-    def name_description(cls, v):
+    def name_description(cls, v: str) -> str:
         v = v.strip()
         if len(v) < 5:
             raise ValueError("Description of the function must not be empty!")
@@ -55,7 +55,7 @@ class CFunction(BaseModel):
 class CFunctions(BaseModel):
     fn: dict[str, CFunction] = {}
 
-    def add(self, f: CFunction):
+    def add(self, f: CFunction) -> None:
         if not (self.fn.get(f.name, None) is None):
             raise ValueError("Name of the function must be unique!"
                              f"(name='{f.name}')")

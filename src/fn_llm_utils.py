@@ -12,30 +12,57 @@ class LLMVocabulary:
             self.int_next: set[int] = set()
             self.float_next: set[int] = set()
 
-            self.int_first = {v for k, v in self.txt_to_id.items() if ((k[0] in "1234567890")
-                                                                       or ((len(k) == 1) and (k[0] in "-+"))
-                                                                       or ((len(k) > 1) 
-                                                                           and (((k[0] == "Ġ") and ((k[1] in "1234567890") or ((k[1] in "-+") and ((len(k) == 2) or (k[2] in "1234567890")))))
-                                                                               or ((k[0] in "-+") and (k[1] in "1234567890")))
-                                                                                ))}
+            self.int_first = {v for k, v in self.txt_to_id.items()
+                              if ((k[0].isdecimal())
+                                  or ((len(k) == 1) and (k[0] in "-+"))
+                                  or ((len(k) > 1)
+                                      and ((
+                                          (k[0] == "Ġ")
+                                          and ((k[1].isdecimal())
+                                               or ((k[1] in "-+")
+                                                   and ((len(k) == 2)
+                                                        or k[2].isdecimal()))))
+                                           or ((k[0] in "-+")
+                                               and (k[1].isdecimal())))
+                                      ))}
 
             self.int_next = {v for k, v in self.txt_to_id.items()
-                             if (k[0] in "1234567890")}
-            self.float_first = {v for k, v in self.txt_to_id.items() if ((k[0] in "1234567890")
-                                                                       or ((len(k) == 1) and (k[0] in "-+."))
-                                                                       or ((len(k) > 1) 
-                                                                           and (((k[0] == "Ġ") and ((k[1] in "1234567890") or ((k[1] in "-+.") and ((len(k) == 2) or (k[2] in "1234567890")))))
-                                                                               or ((k[0] in "-+.") and (k[1] in "1234567890"))
-                                                                               or ((k[0] in "-+") and (k[1] == '.') and ((len(k) == 2) or (k[2] in "1234567890")))
-                                                                               )
-                                                                                ))}
+                             if (k[0].isdecimal())}
+
+            self.float_first = {v for k, v in self.txt_to_id.items()
+                                if ((k[0].isdecimal())
+                                    or ((len(k) == 1) and (k[0] in "-+."))
+                                    or ((len(k) > 1)
+                                        and (((k[0] == "Ġ")
+                                              and ((k[1].isdecimal())
+                                                   or ((k[1] in "-+.")
+                                                       and ((len(k) == 2)
+                                                            or k[2].isdecimal()
+                                                            ))))
+                                             or ((k[0] in "-+.")
+                                                 and k[1].isdecimal())
+                                             or ((k[0] in "-+")
+                                                 and (k[1] == '.')
+                                                 and ((len(k) == 2)
+                                                      or k[2].isdecimal()))
+                                             )
+                                        ))}
+
             self.float_next = {v for k, v in self.txt_to_id.items()
-                               if ((k[0] in "1234567890")
-                                   or ((k[0] in ".eE-+") and ((len(k) == 1)
-                                                            or (k[1] in "1234567890")
-                                                            or ((k[0] == '.') and (k[1] in "eE") and ((len(k) == 2) or k[2] in "1234567890+-"))
-                                                            or ((k[0] in "eE") and (k[1] in "+-") and ((len(k) == 2) or k[2] in "1234567890"))
-                                                            ))
+                               if ((k[0].isdecimal())
+                                   or ((k[0] in ".eE-+")
+                                       and ((len(k) == 1)
+                                            or (k[1].isdecimal())
+                                            or ((k[0] == '.')
+                                                and (k[1] in "eE")
+                                                and ((len(k) == 2)
+                                                     or k[2] in "1234567890+-")
+                                                )
+                                            or ((k[0] in "eE")
+                                                and (k[1] in "+-")
+                                                and ((len(k) == 2)
+                                                     or k[2].isdecimal()))
+                                            ))
                                    )}
 
             print("~~~~~~~~~~~~~~~")
@@ -55,5 +82,5 @@ class LLMVocabulary:
         return self.id_to_txt.get(token_id, None)
 
     def get_token_by_str(self, str_: str) -> int | None:
-        """ Return token id if find """
+        """ Return token id if find token for string """
         return self.txt_to_id.get(str_, None)
