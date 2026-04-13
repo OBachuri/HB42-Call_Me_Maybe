@@ -11,7 +11,7 @@ import llm_sdk
 from llm_sdk import Small_LLM_Model
 
 from src.pd_valid import CFunctions, CFunction, CPrompt
-from src.fn_llm_utils import  LLMVocabulary
+from src.fn_llm_utils import LLMVocabulary
 from typing import Any
 import torch.nn.functional as F
 
@@ -27,7 +27,7 @@ def get_variable(llm: Small_LLM_Model,
     value_str = ''
     next_token = 0
     value_tokens = []
-    min_probability = 0.95
+    min_probability = 0.90
 
     # skip white spaces
     # print("skip white spaces")
@@ -42,7 +42,7 @@ def get_variable(llm: Small_LLM_Model,
             # print("t:", next_token, ", str:", llm.decode([next_token]))
             return None
         str_ = llm.decode([next_token]).strip()
-        if (len(str_) < 1):
+        if (len(str_) == 0):
             reqest_tokens_list.append(next_token)
     # print("start variable")
 
@@ -55,14 +55,56 @@ def get_variable(llm: Small_LLM_Model,
     """
 
     if (v_type == 'number') or (v_type == 'float'):
-        steps_ = [["-+", 1, 0, 1],
-                  ["0123456789", 20, 1, 1],
-                  [".", 1, 0],
-                  ["0123456789", 20, 1, 1],
-                  ["eE", 1, 0],
-                  ["0123456789", 15, 0, 1]]
+
+        # print("number: token=", next_token, f', s="{str_}" ,',
+        #           llm_vocab.get_str_by_token(next_token))
+
+        # str_ = llm.decode(reqest_tokens_list)
+        # print(f"{str_}:---------")
+        # print("+"*30)
+
+        probs = F.softmax(cc_t, dim=-1)
+        indices = list(llm_vocab.float_first)
+        values = probs[indices]
+
+        next_ = torch.argmax(values).item()
+        next_token = indices[next_]
+        cur_probability = values[next_].item()
+        print(f"  1:{next_token:6}:'{llm_vocab.get_str_by_token(next_token)}', {cur_probability}")
+        if (cur_probability > min_probability):
+            value_str = llm.decode([next_token])
+            reqest_tokens_list.append(next_token)
+            cc = llm.get_logits_from_input_ids(reqest_tokens_list)
+            cc_t = torch.tensor(cc)
+        else:
+            return None
+
+        indices = list(llm_vocab.float_next)
+        x = 2
+        while (x < 30):
+            probs = F.softmax(cc_t, dim=-1)
+            values = probs[indices]
+            next_ = torch.argmax(values).item()
+            next_token = indices[next_]
+            cur_probability = values[next_].item()
+            print(f"{x:3}:{next_token:6}:'{llm_vocab.get_str_by_token(next_token)}', {cur_probability}")
+            if (cur_probability < min_probability):
+                break
+            value_str += llm_vocab.get_str_by_token(next_token)
+            reqest_tokens_list.append(next_token)
+            cc = llm.get_logits_from_input_ids(reqest_tokens_list)
+            cc_t = torch.tensor(cc)
+            x += 1
+        v = None
+        try:
+            if (len(value_str) > 0):
+                v = float(value_str)
+        except Exception:
+            pass
+        return (v)
+
     elif (v_type == 'integer'):
-        print("integer:", str_)
+        # print("integer")
         probs = F.softmax(cc_t, dim=-1)
         # print(probs)
         # print("Форма:", probs.shape)        # torch.Size([3, 4, 5])
@@ -287,9 +329,12 @@ def main() -> None:
         if (len(f_.name) > max_function_name):
             max_function_name = len(f_.name)
 
-    print("max_function_name:", max_function_name)
+    print("max_length_of_function_name:", max_function_name)
 
     llm: Small_LLM_Model = llm_sdk.Small_LLM_Model()
+
+    # llm: Small_LLM_Model = llm_sdk.Small_LLM_Model(
+    #     model_name="Qwen/Qwen3-1.7B")
 
     vocab_path = llm.get_path_to_vocab_file()
     merges_path = llm.get_path_to_merges_file()
@@ -480,13 +525,33 @@ Rules:
         aa = llm.encode('```json')
 #        print(aa)
         aa_1.extend(aa.flatten().tolist())
+        aa_1.append(llm_vocab.get_token_by_str('Ċ'))
+
+        # # Print model answer with out constraction decoding
+        # aa_2 = []
+        # aa_2.extend(aa_1)
+        # for i_ in range(1, 50):
+        #     cc = llm.get_logits_from_input_ids(aa_2)
+        #     cc_t = torch.tensor(cc)
+        #     next_token = torch.argmax(cc_t).item()
+        #     if ((next_token == 151645) or (next_token == 73594)):
+        #         # print("t:", next_token, ", str:", llm.decode([next_token]))
+        #         break
+        #     print("t:", next_token,
+        #           f', str:"{llm_vocab.get_str_by_token(next_token)}"')
+        #     aa_2.append(next_token)
+        # print("#"*30)
+        # print(llm.decode(aa_2))
+        # print("#"*30)
+
         for i_param in range(0, len(fn_param_list)):
+            type_param = fn_param_list[i_param][1]
+            name_param = fn_param_list[i_param][0]
             if (i_param == 0):
-                str_param = "{"
+                str_param = f'{{"{name_param}":'
             else:
-                str_param = ", "
-            str_param += f'"{fn_param_list[i_param][0]}":'
-            if (fn_name.find("regex") < 0):
+                str_param = f', "{name_param}":'
+            if (type_param == "string") and (fn_name.find("regex") < 0):
                 str_param += " "
             # cc = llm.get_logits_from_input_ids(aa_1)
             # aa = llm.encode(f'{{"{fn_param_list[0][0]}": ')
@@ -499,9 +564,9 @@ Rules:
             # str_ = llm.decode(aa_1)
             # print(str_)
             # print("*"*10)
-            print(f"get_variable (name={fn_param_list[i_param][0]}, type={fn_param_list[i_param][1]})")
-            v = get_variable(llm, fn_param_list[i_param][1], aa_1, llm_vocab)
-            f_param[fn_param_list[i_param][0]] = v
+            print(f"get_variable (name={fn_param_list[i_param][0]}, type={type_param})")
+            v = get_variable(llm, type_param, aa_1, llm_vocab)
+            f_param[name_param] = v
             print(f'-- variable value: "{v}", type:', type(v))
 
             # str_ = llm.decode(aa_1)
