@@ -237,11 +237,18 @@ Performance: ~8 sec/prompt
 
 ## Challenges
 
+Small model (Qwen3-0.6B) limitations:
+- has limited reasoning capability
+- sometimes selects wrong function
+- produces unstable token probabilities - For regex model often give value not compatible for json ("\d" not "\\d"), or wrong " *" not "*".
+- wrong interpretation of scientific notation with decimals (.1e3)
 
 
 ## Testing
 
-Manual testing on 11 provided test - all passing.
+Testing focuses on validating both correctness and robustness of the system.
+
+Manual testing was performed on 11 provided tests - all tests were passed successfully.
 
 **Edge cases covered**
 - large numbers (300000, 3e5)
@@ -249,7 +256,6 @@ Manual testing on 11 provided test - all passing.
 - floating-point numbers
 - quoted strings with escapes
 - boolean values
-
 
 
 ## Example Usage
@@ -302,6 +308,10 @@ make run
 ]
 ```
 
+### AI Usage
+Tools Used: ChatGPT (GPT-4)
+
+AI was used to conceptual understanding and to structuring this README to meet subject requirements.
 
 ## License
 
