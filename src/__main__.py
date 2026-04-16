@@ -25,7 +25,7 @@ def get_variable(llm: Small_LLM_Model,
     value_str = ''
     next_token = 0
     value_tokens = []
-    min_probability = 0.90
+    min_probability = 0.60
 
     # skip white spaces
     while (len(str_) == 0):
@@ -404,15 +404,21 @@ Rules:
 - Do NOT return result
 - You are NOT executing the function. """
                 f"""You are ONLY preparing the input parameters.
-<|im_end|>
+""")
+        if (s_.find("template") >= 0):
+            str_ += """- Leave " add \\" in string variable as is
+"""
+        str_ += f"""<|im_end|>
 
 <|im_start|>user
 {str_promt}
 <|im_end|>
 
 <|im_start|>assistant
-""")
+"""
 
+        # print(str_)
+        # print("-"*10)
         aa = llm.encode(str_)
         aa_1 = aa.flatten().tolist()
         mylist = []

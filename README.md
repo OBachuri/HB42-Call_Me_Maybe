@@ -243,6 +243,7 @@ Small model (Qwen3-0.6B) limitations:
 - produces unstable token probabilities - For regex model often give value not compatible for json ("\d" not "\\d"), or wrong " *" not "*".
 - wrong interpretation of scientific notation with decimals (.1e3)
 
+"Support for complex nested function arguments" - this was not in the task, so it was not implemented, but it is necessary as bonus part  according to the evaluation list for this project.  
 
 ## Testing
 
